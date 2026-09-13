@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
@@ -16,6 +17,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -30,6 +32,7 @@ class MainActivity : Activity() {
     private lateinit var lastText: TextView
     private lateinit var lastMeta: TextView
     private lateinit var batteryButton: Button
+    private lateinit var defaultTextColors: ColorStateList
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,6 +86,7 @@ class MainActivity : Activity() {
         add(statusText, top = 8)
 
         lastText = textView(56f, bold = true).apply { gravity = Gravity.CENTER }
+        defaultTextColors = lastText.textColors
         add(lastText, top = 28)
         lastMeta = textView(14f, muted = true).apply { gravity = Gravity.CENTER }
         add(lastMeta, top = 4)
@@ -91,6 +95,22 @@ class MainActivity : Activity() {
             text = "测试振动(A → C)"
             setOnClickListener { Vibe.play(this@MainActivity, "AC", Vibe.DEFAULT_GAP) }
         }, top = 28)
+
+        add(Button(this).apply {
+            text = "测试重置提示"
+            setOnClickListener {
+                Vibe.playReset(this@MainActivity)
+                if (prefs.getBoolean(Protocol.PREF_RESET_SOUND, false)) Vibe.errorTone()
+            }
+        }, top = 8)
+
+        add(CheckBox(this).apply {
+            text = "收到重置时同时响提示音(跟随通知音量)"
+            isChecked = prefs.getBoolean(Protocol.PREF_RESET_SOUND, false)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(Protocol.PREF_RESET_SOUND, checked).apply()
+            }
+        }, top = 8)
 
         batteryButton = Button(this).apply {
             text = "允许后台运行(关闭电池优化)"
@@ -154,9 +174,10 @@ class MainActivity : Activity() {
         roomInput.isEnabled = !running
         statusText.text = if (running) SignalService.status else "未在接收"
 
-        val letters = SignalService.lastLetters
-        lastText.text = if (letters.isEmpty()) "–" else letters.toList().joinToString(" ")
-        lastMeta.text = if (letters.isEmpty()) "还没收到信号" else "振动 ${Vibe.counts(letters)} 下 · ${SignalService.lastTime}"
+        val headline = SignalService.lastHeadline
+        lastText.text = headline.ifEmpty { "–" }
+        if (headline == "✕") lastText.setTextColor(0xFFD64545.toInt()) else lastText.setTextColor(defaultTextColors)
+        lastMeta.text = SignalService.lastDetail.ifEmpty { "还没收到信号" }
 
         val power = getSystemService(PowerManager::class.java)
         batteryButton.visibility = if (power.isIgnoringBatteryOptimizations(packageName)) View.GONE else View.VISIBLE

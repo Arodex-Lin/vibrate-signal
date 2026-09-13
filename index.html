@@ -109,6 +109,11 @@
   .primary { width: 100%; padding: 18px; border: 0; border-radius: var(--radius); background: var(--accent); color: #fff; font-size: 18px; font-weight: 600; }
   .primary:active { opacity: .85; }
   .primary:disabled { opacity: .4; cursor: default; }
+  .danger {
+    width: 100%; margin-top: 12px; padding: 14px; border-radius: var(--radius); font-size: 16px; font-weight: 600; color: var(--err);
+    border: 1px solid color-mix(in srgb, var(--err) 45%, var(--line)); background: color-mix(in srgb, var(--err) 7%, var(--surface));
+  }
+  .danger:active { background: color-mix(in srgb, var(--err) 18%, var(--surface)); }
 
   .display {
     --k: var(--muted);
@@ -119,6 +124,7 @@
   .display[data-key="B"] { --k: var(--b); }
   .display[data-key="C"] { --k: var(--c); }
   .display[data-key="D"] { --k: var(--d); }
+  .display[data-key="reset"] { --k: var(--err); }
   .display.flash { background: color-mix(in srgb, var(--k) 30%, var(--surface)); }
   #bigLetter { font-size: 120px; font-weight: 700; line-height: 1; color: var(--k); }
   #bigLetter.multi { font-size: 72px; letter-spacing: .06em; }
@@ -128,6 +134,7 @@
   #pulses i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--k); }
   #pulses.multi i { width: 13px; height: 13px; }
   #pulses i.on { background: var(--k); }
+  #pulses .note { font-size: 15px; font-weight: 600; color: var(--k); }
 
   .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
   .switch { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
@@ -178,6 +185,7 @@
       </div>
       <button class="primary" id="sendMulti" type="button" disabled>先点选字母</button>
     </div>
+    <button class="danger" id="resetBtn" type="button">✕ 重置(上一个发错了)</button>
     <p class="status" id="sendStatus" aria-live="polite">点一个字母,接收端会振动对应次数。</p>
   </section>
 
@@ -207,6 +215,7 @@
   const COUNTS = { A: 1, B: 2, C: 3, D: 4 };
   const PULSE_ON = 300, PULSE_OFF = 250;
   const DEFAULT_GAP = 1500;
+  const RESET_ON = 100, RESET_OFF = 80, RESET_PULSES = 8; // 重置:急促连振
   const ACK_TIMEOUT = 6000;
   const canVibrate = typeof navigator.vibrate === 'function';
 
@@ -401,6 +410,12 @@
     });
   });
 
+  $('resetBtn').addEventListener('click', () => {
+    selected.clear();
+    renderSelection();
+    send('', $('resetBtn'));
+  });
+
   sendMultiBtn.addEventListener('click', async () => {
     const letters = selectedLetters();
     if (letters && await send(letters, sendMultiBtn)) {
@@ -409,35 +424,40 @@
     }
   });
 
+  // letters 为空字符串表示「重置」:告诉接收端上一个信号作废
   async function send(letters, btn) {
     if (!validRoom(roomInput.value)) { setSendStatus('房间号需要 6 位数字', 'err'); return false; }
     btn.classList.remove('sent'); void btn.offsetWidth; btn.classList.add('sent');
     if (canVibrate) navigator.vibrate(15);
     const n = nonce();
-    const gap = Math.round(Number(gapInput.value) * 1000);
-    setSendStatus(`正在发送 ${label(letters)}…`);
+    const short = letters ? label(letters) : '重置';
+    const full = letters ? describe(letters) : '重置(上一个作废)';
+    const payload = letters
+      ? { t: 'sig', k: letters, gap: Math.round(Number(gapInput.value) * 1000), n }
+      : { t: 'reset', n };
+    setSendStatus(`正在发送 ${short}…`);
     try {
-      await publish({ t: 'sig', k: letters, gap, n });
+      await publish(payload);
     } catch (e) {
       setSendStatus('发送失败:' + e.message, 'err');
       return false;
     }
-    setSendStatus(`已发送 ${describe(letters)},等待接收端确认…`);
+    setSendStatus(`已发送 ${full},等待接收端确认…`);
     const timer = setTimeout(() => {
       if (!pending.has(n)) return;
       pending.delete(n);
-      setSendStatus(`已发送 ${label(letters)},但接收端 ${ACK_TIMEOUT / 1000} 秒内没有确认。请确认对方房间号是 ${room},并已开始接收。`, 'warn');
+      setSendStatus(`已发送 ${short},但接收端 ${ACK_TIMEOUT / 1000} 秒内没有确认。请确认对方房间号是 ${room},并已开始接收。`, 'warn');
     }, ACK_TIMEOUT);
-    pending.set(n, { letters, timer });
+    pending.set(n, { full, timer });
     return true;
   }
 
   function onSenderMsg(m) {
     if (m.t !== 'ack' || !pending.has(m.n)) return;
-    const { letters, timer } = pending.get(m.n);
+    const { full, timer } = pending.get(m.n);
     clearTimeout(timer);
     pending.delete(m.n);
-    setSendStatus(`✓ 接收端已收到 ${describe(letters)}`, 'ok');
+    setSendStatus(`✓ 接收端已收到 ${full}`, 'ok');
   }
 
   // ---------- 接收端 ----------
@@ -476,8 +496,15 @@
   }
 
   function onReceiverMsg(m) {
+    if (!m.n || seen.has(m.n)) return;
+    if (m.t === 'reset') {
+      seen.add(m.n);
+      signalReset();
+      publish({ t: 'ack', n: m.n, k: 'reset' }).catch(() => {});
+      return;
+    }
     const letters = typeof m.k === 'string' ? m.k.split('').filter((c) => COUNTS[c]).join('') : '';
-    if (m.t !== 'sig' || !letters || seen.has(m.n)) return;
+    if (m.t !== 'sig' || !letters) return;
     seen.add(m.n);
     const gap = Math.min(5000, Math.max(300, Number(m.gap) || DEFAULT_GAP));
     signal(letters, gap);
@@ -531,19 +558,59 @@
       signalTimers.push(setTimeout(() => display.classList.remove('flash'), s + PULSE_ON));
     });
 
+    addHistory(`<b>${label(letters)}</b> · 振动 ${letters.split('').map((c) => COUNTS[c]).join(' + ')} 下`);
+  }
+
+  // 重置:急促连振 + 低沉提示音,表示上一个信号作废;会打断正在播放的信号
+  function signalReset() {
+    signalTimers.forEach(clearTimeout);
+    signalTimers = [];
+    const starts = Array.from({ length: RESET_PULSES }, (_, i) => i * (RESET_ON + RESET_OFF));
+
+    if (canVibrate) {
+      const pattern = [];
+      starts.forEach((_, i) => {
+        if (i > 0) pattern.push(RESET_OFF);
+        pattern.push(RESET_ON);
+      });
+      navigator.vibrate(pattern);
+    }
+    if ($('beep').checked) {
+      beep(0.22, 0.18, 440, 'square');
+      beep(0.5, 0.18, 220, 'square', 0.3);
+    }
+
+    display.dataset.key = 'reset';
+    bigLetter.classList.remove('idle', 'multi');
+    bigLetter.textContent = '✕';
+    pulses.classList.remove('multi');
+    pulses.innerHTML = '<span class="note">重置 · 上一个作废</span>';
+    starts.forEach((s) => {
+      signalTimers.push(setTimeout(() => {
+        display.classList.add('flash');
+        if (!canVibrate) iosHaptic();
+      }, s));
+      signalTimers.push(setTimeout(() => display.classList.remove('flash'), s + RESET_ON));
+    });
+
+    addHistory('<b>✕ 重置</b> · 上一个作废');
+  }
+
+  function addHistory(html) {
     const li = document.createElement('li');
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    li.innerHTML = `<span><b>${label(letters)}</b> · 振动 ${letters.split('').map((c) => COUNTS[c]).join(' + ')} 下</span><span>${time}</span>`;
+    li.innerHTML = `<span>${html}</span><span>${time}</span>`;
     historyList.prepend(li);
     while (historyList.children.length > 8) historyList.lastChild.remove();
   }
 
-  function beep(seconds, volume) {
+  function beep(seconds, volume, freq = 880, type = 'sine', delay = 0) {
     if (!audioCtx) return;
-    const t = audioCtx.currentTime;
+    const t = audioCtx.currentTime + delay;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.frequency.value = 880;
+    osc.type = type;
+    osc.frequency.value = freq;
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(volume, t + 0.01);
     gain.gain.setValueAtTime(volume, t + Math.max(0.02, seconds - 0.03));

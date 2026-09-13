@@ -13,6 +13,7 @@ object Protocol {
     const val PREFS = "vibsig"
     const val PREF_ROOM = "room"
     const val PREF_RUNNING = "running"
+    const val PREF_RESET_SOUND = "reset_sound"
 
     fun isValidRoom(room: String) = Regex("\\d{6}").matches(room)
 

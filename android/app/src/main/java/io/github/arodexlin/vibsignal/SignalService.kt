@@ -36,8 +36,8 @@ class SignalService : Service() {
 
         @Volatile var running = false
         @Volatile var status = "未启动"
-        @Volatile var lastLetters = ""
-        @Volatile var lastTime = ""
+        @Volatile var lastHeadline = ""
+        @Volatile var lastDetail = ""
 
         /** 界面在前台时注册,状态变化时在主线程回调。 */
         var listener: (() -> Unit)? = null
@@ -185,10 +185,11 @@ class SignalService : Service() {
         } catch (e: Exception) {
             return
         }
-        if (msg.optString("t") != "sig") return
+        val type = msg.optString("t")
         val letters = msg.optString("k").filter { it in 'A'..'D' }
         val nonce = msg.optString("n")
-        if (letters.isEmpty() || nonce.isEmpty()) return
+        val isReset = type == "reset"
+        if (nonce.isEmpty() || !(isReset || (type == "sig" && letters.isNotEmpty()))) return
         synchronized(seen) {
             if (!seen.add(nonce)) return
             if (seen.size > 200) seen.remove(seen.first())
@@ -197,14 +198,22 @@ class SignalService : Service() {
         val sentAt = event.optLong("time")
         if (sentAt > 0 && abs(System.currentTimeMillis() / 1000 - sentAt) > 120) return
 
-        val gap = msg.optLong("gap", Vibe.DEFAULT_GAP).coerceIn(300L, 5_000L)
-        Vibe.play(this, letters, gap)
-
-        lastLetters = letters
-        lastTime = SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())
+        val time = SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())
+        if (isReset) {
+            Vibe.playReset(this)
+            if (prefs.getBoolean(Protocol.PREF_RESET_SOUND, false)) Vibe.errorTone()
+            lastHeadline = "✕"
+            lastDetail = "重置 · 上一个作废 · $time"
+            updateNotification("收到重置(上一个作废)· $time")
+        } else {
+            val gap = msg.optLong("gap", Vibe.DEFAULT_GAP).coerceIn(300L, 5_000L)
+            Vibe.play(this, letters, gap)
+            lastHeadline = letters.toList().joinToString(" ")
+            lastDetail = "振动 ${Vibe.counts(letters)} 下 · $time"
+            updateNotification("收到 ${Vibe.label(letters)} · $time")
+        }
         changed()
-        updateNotification("收到 ${Vibe.label(letters)} · $lastTime")
-        Protocol.publish(room, JSONObject().put("t", "ack").put("n", nonce).put("k", letters))
+        Protocol.publish(room, JSONObject().put("t", "ack").put("n", nonce).put("k", if (isReset) "reset" else letters))
     }
 
     private fun setStatus(gen: Int, text: String) {
