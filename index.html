@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
+<title>振动信号</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #ffffff;
+    --text: #1b1b1a;
+    --muted: #6d6b66;
+    --line: #e3e1dc;
+    --accent: #2f6fed;
+    --ok: #1f9d55;
+    --warn: #b7791f;
+    --err: #d64545;
+    --a: #2f6fed;
+    --b: #1f9d55;
+    --c: #c2410c;
+    --d: #9333ea;
+    --radius: 18px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414;
+      --surface: #1f1f1e;
+      --text: #f1f0ec;
+      --muted: #9c9a94;
+      --line: #33322f;
+      --accent: #6b9bff;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --err: #f87171;
+      --a: #6b9bff;
+      --b: #4ade80;
+      --c: #fb923c;
+      --d: #c084fc;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  main { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 22px; margin: 4px 0 16px; letter-spacing: .02em; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+  .room label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .room-row { display: flex; gap: 8px; align-items: center; }
+  .room input {
+    flex: 1; min-width: 0; font: 600 26px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .18em;
+    padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text);
+  }
+  .room input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .room input.bad { border-color: var(--err); }
+  .ghost { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: transparent; white-space: nowrap; font-size: 14px; }
+  .ghost:active { background: var(--line); }
+  .conn { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .conn[data-state="open"] .dot { background: var(--ok); }
+  .conn[data-state="connecting"] .dot { background: var(--warn); animation: blink 1s infinite; }
+  .conn[data-state="error"] .dot { background: var(--err); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 16px 0; background: var(--line); border-radius: 14px; }
+  .seg button { border: 0; background: transparent; padding: 10px; border-radius: 10px; font-weight: 600; color: var(--muted); }
+  .seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .key {
+    --k: var(--accent);
+    aspect-ratio: 1; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    transition: transform .08s ease, background .15s ease; touch-action: manipulation; user-select: none;
+  }
+  .key:active { transform: scale(.96); background: color-mix(in srgb, var(--k) 14%, var(--surface)); }
+  .key .letter { font-size: 56px; font-weight: 700; line-height: 1; color: var(--k); }
+  .key .count { font-size: 14px; color: var(--muted); }
+  .key .pips { display: flex; gap: 5px; }
+  .key .pips i { width: 7px; height: 7px; border-radius: 50%; background: var(--k); opacity: .7; }
+  .key[data-key="A"] { --k: var(--a); }
+  .key[data-key="B"] { --k: var(--b); }
+  .key[data-key="C"] { --k: var(--c); }
+  .key[data-key="D"] { --k: var(--d); }
+  .key.sent { animation: pop .35s ease; }
+  @keyframes pop { 40% { transform: scale(.94); } }
+
+  .status { min-height: 3em; margin: 14px 2px 0; font-size: 14px; color: var(--muted); }
+  .status.ok { color: var(--ok); }
+  .status.warn { color: var(--warn); }
+  .status.err { color: var(--err); }
+
+  .primary { width: 100%; padding: 18px; border: 0; border-radius: var(--radius); background: var(--accent); color: #fff; font-size: 18px; font-weight: 600; }
+  .primary:active { opacity: .85; }
+
+  .display {
+    --k: var(--muted);
+    margin-top: 4px; height: 260px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; transition: background .12s ease;
+  }
+  .display[data-key="A"] { --k: var(--a); }
+  .display[data-key="B"] { --k: var(--b); }
+  .display[data-key="C"] { --k: var(--c); }
+  .display[data-key="D"] { --k: var(--d); }
+  .display.flash { background: color-mix(in srgb, var(--k) 30%, var(--surface)); }
+  #bigLetter { font-size: 120px; font-weight: 700; line-height: 1; color: var(--k); }
+  #bigLetter.idle { font-size: 18px; font-weight: 500; color: var(--muted); }
+  #pulses { display: flex; gap: 12px; height: 18px; }
+  #pulses i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--k); }
+  #pulses i.on { background: var(--k); }
+
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
+  .switch { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+  .switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .history { list-style: none; padding: 0; margin: 14px 0 0; font-size: 14px; color: var(--muted); }
+  .history li { display: flex; justify-content: space-between; padding: 8px 2px; border-top: 1px solid var(--line); }
+  .history b { color: var(--text); }
+  .warnbox { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--warn) 14%, var(--surface)); color: var(--text); }
+  .hint { font-size: 13px; color: var(--muted); margin: 12px 2px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>振动信号</h1>
+
+  <section class="card room">
+    <label for="room">房间号(两台设备填同一个)</label>
+    <div class="room-row">
+      <input id="room" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-describedby="conn">
+      <button class="ghost" id="newRoom" type="button">换一个</button>
+      <button class="ghost" id="share" type="button">分享</button>
+    </div>
+    <div class="conn" id="conn" data-state="idle"><span class="dot"></span><span id="connText">未连接</span></div>
+  </section>
+
+  <nav class="seg" role="tablist">
+    <button role="tab" id="tabSend" data-mode="send" aria-selected="true">发送模式</button>
+    <button role="tab" id="tabRecv" data-mode="recv" aria-selected="false">接收模式</button>
+  </nav>
+
+  <section id="sendView">
+    <div class="grid">
+      <button class="key" data-key="A" type="button"><span class="letter">A</span><span class="pips"><i></i></span><span class="count">振动 1 下</span></button>
+      <button class="key" data-key="B" type="button"><span class="letter">B</span><span class="pips"><i></i><i></i></span><span class="count">振动 2 下</span></button>
+      <button class="key" data-key="C" type="button"><span class="letter">C</span><span class="pips"><i></i><i></i><i></i></span><span class="count">振动 3 下</span></button>
+      <button class="key" data-key="D" type="button"><span class="letter">D</span><span class="pips"><i></i><i></i><i></i><i></i></span><span class="count">振动 4 下</span></button>
+    </div>
+    <p class="status" id="sendStatus" aria-live="polite">点一个字母,接收端会振动对应次数。</p>
+  </section>
+
+  <section id="recvView" hidden>
+    <button class="primary" id="startBtn" type="button">开始接收</button>
+    <div id="recvLive" hidden>
+      <div class="display" id="display" aria-live="assertive">
+        <div id="bigLetter" class="idle">等待信号…</div>
+        <div id="pulses"></div>
+      </div>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="beep" checked> 同时响提示音</label>
+        <button class="ghost" id="stopBtn" type="button">停止接收</button>
+      </div>
+      <ol class="history" id="history"></ol>
+    </div>
+    <p class="warnbox" id="vibWarn" hidden>这个浏览器不支持网页振动(iPhone 上的所有浏览器都不支持),收到信号时会改用<b>提示音 + 闪屏</b>来提醒。</p>
+    <p class="hint">接收时请保持此页面在前台、屏幕常亮;切到后台或锁屏后浏览器可能收不到信号。</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const NTFY = 'https://ntfy.sh/';
+  const TOPIC_PREFIX = 'vibsig-q7k2-';
+  const COUNTS = { A: 1, B: 2, C: 3, D: 4 };
+  const PULSE_ON = 300, PULSE_OFF = 250;
+  const canVibrate = typeof navigator.vibrate === 'function';
+
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+
+  const validRoom = (r) => /^\d{6}$/.test(r);
+  const randomRoom = () => String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
+  const topic = (r) => TOPIC_PREFIX + r;
+  const nonce = () => Math.random().toString(36).slice(2, 10);
+
+  // ---------- 状态 ----------
+  const params = new URLSearchParams(location.search);
+  let room = [params.get('room'), store.get('room')].find((r) => r && validRoom(r)) || randomRoom();
+  let mode = params.get('mode') === 'recv' ? 'recv' : params.get('mode') === 'send' ? 'send' : (store.get('mode') === 'recv' ? 'recv' : 'send');
+  let sub = null;          // 当前 EventSource 订阅
+  let receiving = false;
+  let audioCtx = null;
+  let wakeLock = null;
+  const seen = new Set();
+  const pending = new Map(); // 发送端:nonce -> { key, timer }
+
+  // ---------- 房间号 ----------
+  const roomInput = $('room');
+  roomInput.value = room;
+
+  function applyRoom(r) {
+    room = r;
+    store.set('room', r);
+    const url = new URL(location.href);
+    url.searchParams.set('room', r);
+    url.searchParams.delete('mode');
+    history.replaceState(null, '', url);
+    resubscribe();
+  }
+
+  roomInput.addEventListener('input', () => {
+    roomInput.value = roomInput.value.replace(/\D/g, '').slice(0, 6);
+    const ok = validRoom(roomInput.value);
+    roomInput.classList.toggle('bad', !ok);
+    if (ok && roomInput.value !== room) applyRoom(roomInput.value);
+    if (!ok) setConn('idle', '房间号需要 6 位数字');
+  });
+
+  $('newRoom').addEventListener('click', () => {
+    roomInput.value = randomRoom();
+    roomInput.classList.remove('bad');
+    applyRoom(roomInput.value);
+  });
+
+  $('share').addEventListener('click', async () => {
+    const other = mode === 'send' ? 'recv' : 'send';
+    const url = new URL(location.href);
+    url.search = '';
+    url.searchParams.set('room', room);
+    url.searchParams.set('mode', other);
+    const link = url.toString();
+    const text = `振动信号 房间号 ${room}(对方打开后是${other === 'recv' ? '接收' : '发送'}模式)`;
+    try {
+      if (navigator.share) { await navigator.share({ title: '振动信号', text, url: link }); return; }
+      await navigator.clipboard.writeText(link);
+      flashButton($('share'), '已复制');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      window.prompt('复制这个链接发给对方:', link);
+    }
+  });
+
+  function flashButton(btn, label) {
+    const old = btn.textContent;
+    btn.textContent = label;
+    setTimeout(() => { btn.textContent = old; }, 1400);
+  }
+
+  // ---------- 连接 ----------
+  function setConn(state, text) {
+    $('conn').dataset.state = state;
+    $('connText').textContent = text;
+  }
+
+  function closeSub() {
+    if (sub) { sub.close(); sub = null; }
+  }
+
+  function subscribe(onMsg) {
+    closeSub();
+    const r = room;
+    setConn('connecting', `正在连接房间 ${r}…`);
+    const es = new EventSource(NTFY + topic(r) + '/sse');
+    sub = es;
+    es.addEventListener('open', () => {
+      if (sub === es) setConn('open', `已连接房间 ${r}`);
+    });
+    es.addEventListener('error', () => {
+      if (sub !== es) return;
+      if (es.readyState === EventSource.CLOSED) {
+        setConn('error', '连接断开,3 秒后重连…');
+        setTimeout(() => { if (sub === es) subscribe(onMsg); }, 3000);
+      } else {
+        setConn('error', '网络波动,正在重连…');
+      }
+    });
+    es.addEventListener('message', (ev) => {
+      let d, m;
+      try { d = JSON.parse(ev.data); } catch { return; }
+      if (d.event !== 'message') return;
+      try { m = JSON.parse(d.message); } catch { return; }
+      onMsg(m);
+    });
+  }
+
+  function resubscribe() {
+    if (mode === 'send') subscribe(onSenderMsg);
+    else if (receiving) subscribe(onReceiverMsg);
+    else { closeSub(); setConn('idle', '点「开始接收」后连接'); }
+  }
+
+  async function publish(payload) {
+    const res = await fetch(NTFY + topic(room), { method: 'POST', body: JSON.stringify(payload) });
+    if (res.status === 429) throw new Error('发送太频繁,请稍等几秒再试');
+    if (!res.ok) throw new Error('服务器返回 ' + res.status);
+  }
+
+  // ---------- 模式切换 ----------
+  function setMode(m) {
+    mode = m;
+    store.set('mode', m);
+    $('tabSend').setAttribute('aria-selected', String(m === 'send'));
+    $('tabRecv').setAttribute('aria-selected', String(m === 'recv'));
+    $('sendView').hidden = m !== 'send';
+    $('recvView').hidden = m !== 'recv';
+    if (m === 'send') stopReceiving();
+    resubscribe();
+  }
+  $('tabSend').addEventListener('click', () => setMode('send'));
+  $('tabRecv').addEventListener('click', () => setMode('recv'));
+
+  // ---------- 发送端 ----------
+  const sendStatus = $('sendStatus');
+  function setSendStatus(text, cls = '') {
+    sendStatus.textContent = text;
+    sendStatus.className = 'status ' + cls;
+  }
+
+  document.querySelectorAll('.key').forEach((btn) => {
+    btn.addEventListener('click', () => send(btn.dataset.key, btn));
+  });
+
+  async function send(key, btn) {
+    if (!validRoom(roomInput.value)) { setSendStatus('房间号需要 6 位数字', 'err'); return; }
+    btn.classList.remove('sent'); void btn.offsetWidth; btn.classList.add('sent');
+    if (canVibrate) navigator.vibrate(15);
+    const n = nonce();
+    const n1 = COUNTS[key];
+    setSendStatus(`正在发送 ${key}…`);
+    try {
+      await publish({ t: 'sig', k: key, n });
+    } catch (e) {
+      setSendStatus('发送失败:' + e.message, 'err');
+      return;
+    }
+    setSendStatus(`已发送 ${key}(振动 ${n1} 下),等待接收端确认…`);
+    const timer = setTimeout(() => {
+      if (!pending.has(n)) return;
+      pending.delete(n);
+      setSendStatus(`已发送 ${key},但接收端 6 秒内没有确认。请确认对方房间号是 ${room},并已点「开始接收」。`, 'warn');
+    }, 6000);
+    pending.set(n, { key, timer });
+  }
+
+  function onSenderMsg(m) {
+    if (m.t !== 'ack' || !pending.has(m.n)) return;
+    const { key, timer } = pending.get(m.n);
+    clearTimeout(timer);
+    pending.delete(m.n);
+    setSendStatus(`✓ 接收端已收到 ${key},振动 ${COUNTS[key]} 下`, 'ok');
+  }
+
+  // ---------- 接收端 ----------
+  const display = $('display');
+  const bigLetter = $('bigLetter');
+  const pulses = $('pulses');
+  const historyList = $('history');
+  $('vibWarn').hidden = canVibrate;
+
+  $('startBtn').addEventListener('click', startReceiving);
+  $('stopBtn').addEventListener('click', () => { stopReceiving(); resubscribe(); });
+
+  function startReceiving() {
+    if (!validRoom(roomInput.value)) { roomInput.focus(); roomInput.classList.add('bad'); return; }
+    receiving = true;
+    // 在用户点击时解锁振动与音频
+    if (canVibrate) navigator.vibrate(40);
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume();
+      beep(1, 0.001); // 静音起播,解锁 iOS 音频
+    } catch {}
+    $('startBtn').hidden = true;
+    $('recvLive').hidden = false;
+    keepAwake();
+    subscribe(onReceiverMsg);
+  }
+
+  function stopReceiving() {
+    if (!receiving) return;
+    receiving = false;
+    closeSub();
+    $('startBtn').hidden = false;
+    $('recvLive').hidden = true;
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
+
+  function onReceiverMsg(m) {
+    if (m.t !== 'sig' || !COUNTS[m.k] || seen.has(m.n)) return;
+    seen.add(m.n);
+    signal(m.k);
+    publish({ t: 'ack', n: m.n, k: m.k }).catch(() => {});
+  }
+
+  let signalTimers = [];
+  function signal(key) {
+    const count = COUNTS[key];
+    signalTimers.forEach(clearTimeout);
+    signalTimers = [];
+
+    if (canVibrate) {
+      const pattern = [];
+      for (let i = 0; i < count; i++) pattern.push(PULSE_ON, PULSE_OFF);
+      pattern.pop();
+      navigator.vibrate(pattern);
+    }
+
+    display.dataset.key = key;
+    bigLetter.classList.remove('idle');
+    bigLetter.textContent = key;
+    pulses.innerHTML = '<i></i>'.repeat(count);
+    const dots = pulses.querySelectorAll('i');
+
+    for (let i = 0; i < count; i++) {
+      signalTimers.push(setTimeout(() => {
+        dots[i].classList.add('on');
+        display.classList.add('flash');
+        if ($('beep').checked) beep(PULSE_ON / 1000, 0.25);
+        if (!canVibrate) iosHaptic();
+      }, i * (PULSE_ON + PULSE_OFF)));
+      signalTimers.push(setTimeout(() => display.classList.remove('flash'), i * (PULSE_ON + PULSE_OFF) + PULSE_ON));
+    }
+
+    const li = document.createElement('li');
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    li.innerHTML = `<span><b>${key}</b> · 振动 ${count} 下</span><span>${time}</span>`;
+    historyList.prepend(li);
+    while (historyList.children.length > 8) historyList.lastChild.remove();
+  }
+
+  function beep(seconds, volume) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume, t + 0.01);
+    gain.gain.setValueAtTime(volume, t + Math.max(0.02, seconds - 0.03));
+    gain.gain.linearRampToValueAtTime(0, t + seconds);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + seconds + 0.02);
+  }
+
+  // iOS 18+ Safari:点击 switch 复选框的 label 会触发一次触感反馈(尽力而为,不保证生效)
+  function iosHaptic() {
+    try {
+      const label = document.createElement('label');
+      label.setAttribute('aria-hidden', 'true');
+      label.style.display = 'none';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('switch', '');
+      label.appendChild(input);
+      document.head.appendChild(label);
+      label.click();
+      label.remove();
+    } catch {}
+  }
+
+  async function keepAwake() {
+    try {
+      if (receiving && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+        wakeLock = await navigator.wakeLock.request('screen');
+      }
+    } catch {}
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    // 回到前台时重新建立连接、重新申请常亮
+    if (receiving) { keepAwake(); subscribe(onReceiverMsg); }
+    else if (mode === 'send') subscribe(onSenderMsg);
+    if (audioCtx) audioCtx.resume().catch(() => {});
+  });
+
+  // ---------- 启动 ----------
+  if (params.get('room') || params.get('mode')) {
+    store.set('room', room);
+  }
+  setMode(mode);
+})();
+</script>
+</body>
+</html>
