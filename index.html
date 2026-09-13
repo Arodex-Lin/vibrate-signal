@@ -73,6 +73,8 @@
   .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 16px 0; background: var(--line); border-radius: 14px; }
   .seg button { border: 0; background: transparent; padding: 10px; border-radius: 10px; font-weight: 600; color: var(--muted); }
   .seg button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .seg.sub { margin: 0 0 12px; }
+  .seg.sub button { padding: 7px; font-size: 14px; }
 
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .key {
@@ -90,8 +92,14 @@
   .key[data-key="B"] { --k: var(--b); }
   .key[data-key="C"] { --k: var(--c); }
   .key[data-key="D"] { --k: var(--d); }
-  .key.sent { animation: pop .35s ease; }
+  .key.selected { background: color-mix(in srgb, var(--k) 16%, var(--surface)); border-color: var(--k); box-shadow: inset 0 0 0 1px var(--k); }
+  .sent { animation: pop .35s ease; }
   @keyframes pop { 40% { transform: scale(.94); } }
+
+  .multi { margin-top: 14px; }
+  .gap-row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); margin-bottom: 12px; }
+  .gap-row input { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .gap-row b { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   .status { min-height: 3em; margin: 14px 2px 0; font-size: 14px; color: var(--muted); }
   .status.ok { color: var(--ok); }
@@ -100,10 +108,11 @@
 
   .primary { width: 100%; padding: 18px; border: 0; border-radius: var(--radius); background: var(--accent); color: #fff; font-size: 18px; font-weight: 600; }
   .primary:active { opacity: .85; }
+  .primary:disabled { opacity: .4; cursor: default; }
 
   .display {
     --k: var(--muted);
-    margin-top: 4px; height: 260px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line);
+    margin-top: 4px; min-height: 260px; padding: 20px 0; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; transition: background .12s ease;
   }
   .display[data-key="A"] { --k: var(--a); }
@@ -112,19 +121,23 @@
   .display[data-key="D"] { --k: var(--d); }
   .display.flash { background: color-mix(in srgb, var(--k) 30%, var(--surface)); }
   #bigLetter { font-size: 120px; font-weight: 700; line-height: 1; color: var(--k); }
+  #bigLetter.multi { font-size: 72px; letter-spacing: .06em; }
   #bigLetter.idle { font-size: 18px; font-weight: 500; color: var(--muted); }
-  #pulses { display: flex; gap: 12px; height: 18px; }
+  #pulses { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px; min-height: 18px; padding: 0 12px; }
+  #pulses .grp { display: flex; gap: 8px; }
   #pulses i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--k); }
+  #pulses.multi i { width: 13px; height: 13px; }
   #pulses i.on { background: var(--k); }
 
   .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
   .switch { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
   .switch input { width: 18px; height: 18px; accent-color: var(--accent); }
   .history { list-style: none; padding: 0; margin: 14px 0 0; font-size: 14px; color: var(--muted); }
-  .history li { display: flex; justify-content: space-between; padding: 8px 2px; border-top: 1px solid var(--line); }
+  .history li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 2px; border-top: 1px solid var(--line); }
   .history b { color: var(--text); }
   .warnbox { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--warn) 14%, var(--surface)); color: var(--text); }
   .hint { font-size: 13px; color: var(--muted); margin: 12px 2px 0; }
+  .applink { display: block; margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--accent); text-decoration: none; font-size: 14px; text-align: center; }
 </style>
 </head>
 <body>
@@ -147,11 +160,23 @@
   </nav>
 
   <section id="sendView">
+    <nav class="seg sub" role="tablist" aria-label="选择方式">
+      <button role="tab" id="pickSingle" aria-selected="true">单选</button>
+      <button role="tab" id="pickMulti" aria-selected="false">多选</button>
+    </nav>
     <div class="grid">
       <button class="key" data-key="A" type="button"><span class="letter">A</span><span class="pips"><i></i></span><span class="count">振动 1 下</span></button>
       <button class="key" data-key="B" type="button"><span class="letter">B</span><span class="pips"><i></i><i></i></span><span class="count">振动 2 下</span></button>
       <button class="key" data-key="C" type="button"><span class="letter">C</span><span class="pips"><i></i><i></i><i></i></span><span class="count">振动 3 下</span></button>
       <button class="key" data-key="D" type="button"><span class="letter">D</span><span class="pips"><i></i><i></i><i></i><i></i></span><span class="count">振动 4 下</span></button>
+    </div>
+    <div class="multi" id="multiBar" hidden>
+      <div class="gap-row">
+        <label for="gap">字母之间停顿</label>
+        <input type="range" id="gap" min="0.8" max="3" step="0.1" value="1.5">
+        <b id="gapVal">1.5 秒</b>
+      </div>
+      <button class="primary" id="sendMulti" type="button" disabled>先点选字母</button>
     </div>
     <p class="status" id="sendStatus" aria-live="polite">点一个字母,接收端会振动对应次数。</p>
   </section>
@@ -170,7 +195,8 @@
       <ol class="history" id="history"></ol>
     </div>
     <p class="warnbox" id="vibWarn" hidden>这个浏览器不支持网页振动(iPhone 上的所有浏览器都不支持),收到信号时会改用<b>提示音 + 闪屏</b>来提醒。</p>
-    <p class="hint">接收时请保持此页面在前台、屏幕常亮;切到后台或锁屏后浏览器可能收不到信号。</p>
+    <p class="hint">网页接收时请保持页面在前台、屏幕常亮;切到后台或锁屏后浏览器收不到信号。</p>
+    <a class="applink" href="https://github.com/Arodex-Lin/vibrate-signal/releases/latest/download/vibrate-signal.apk">熄屏也要振动?下载安卓接收 App</a>
   </section>
 </main>
 
@@ -180,6 +206,8 @@
   const TOPIC_PREFIX = 'vibsig-q7k2-';
   const COUNTS = { A: 1, B: 2, C: 3, D: 4 };
   const PULSE_ON = 300, PULSE_OFF = 250;
+  const DEFAULT_GAP = 1500;
+  const ACK_TIMEOUT = 6000;
   const canVibrate = typeof navigator.vibrate === 'function';
 
   const $ = (id) => document.getElementById(id);
@@ -192,6 +220,8 @@
   const randomRoom = () => String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
   const topic = (r) => TOPIC_PREFIX + r;
   const nonce = () => Math.random().toString(36).slice(2, 10);
+  const label = (letters) => letters.split('').join(' → ');
+  const describe = (letters) => `${label(letters)}(振动 ${letters.split('').map((c) => COUNTS[c]).join(' + ')} 下)`;
 
   // ---------- 状态 ----------
   const params = new URLSearchParams(location.search);
@@ -202,7 +232,7 @@
   let audioCtx = null;
   let wakeLock = null;
   const seen = new Set();
-  const pending = new Map(); // 发送端:nonce -> { key, timer }
+  const pending = new Map(); // 发送端:nonce -> { letters, timer }
 
   // ---------- 房间号 ----------
   const roomInput = $('room');
@@ -250,9 +280,9 @@
     }
   });
 
-  function flashButton(btn, label) {
+  function flashButton(btn, text) {
     const old = btn.textContent;
-    btn.textContent = label;
+    btn.textContent = text;
     setTimeout(() => { btn.textContent = old; }, 1400);
   }
 
@@ -321,43 +351,93 @@
 
   // ---------- 发送端 ----------
   const sendStatus = $('sendStatus');
+  const gapInput = $('gap');
+  const sendMultiBtn = $('sendMulti');
+  const selected = new Set();
+  let pick = store.get('pick') === 'multi' ? 'multi' : 'single';
+
   function setSendStatus(text, cls = '') {
     sendStatus.textContent = text;
     sendStatus.className = 'status ' + cls;
   }
 
+  const storedGap = parseFloat(store.get('gap'));
+  if (storedGap >= 0.8 && storedGap <= 3) gapInput.value = storedGap;
+  function renderGap() { $('gapVal').textContent = Number(gapInput.value).toFixed(1) + ' 秒'; }
+  gapInput.addEventListener('input', () => { renderGap(); store.set('gap', gapInput.value); });
+  renderGap();
+
+  function setPick(p) {
+    pick = p;
+    store.set('pick', p);
+    $('pickSingle').setAttribute('aria-selected', String(p === 'single'));
+    $('pickMulti').setAttribute('aria-selected', String(p === 'multi'));
+    $('multiBar').hidden = p !== 'multi';
+    selected.clear();
+    renderSelection();
+    setSendStatus(p === 'single'
+      ? '点一个字母,接收端会振动对应次数。'
+      : '点选几个字母后按「发送」,接收端按 A→D 顺序振动,字母之间停顿。');
+  }
+  $('pickSingle').addEventListener('click', () => setPick('single'));
+  $('pickMulti').addEventListener('click', () => setPick('multi'));
+
+  const selectedLetters = () => [...selected].sort().join('');
+
+  function renderSelection() {
+    document.querySelectorAll('.key').forEach((btn) => btn.classList.toggle('selected', selected.has(btn.dataset.key)));
+    const letters = selectedLetters();
+    sendMultiBtn.disabled = !letters;
+    sendMultiBtn.textContent = letters ? `发送 ${label(letters)}` : '先点选字母';
+  }
+
   document.querySelectorAll('.key').forEach((btn) => {
-    btn.addEventListener('click', () => send(btn.dataset.key, btn));
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      if (pick === 'single') { send(key, btn); return; }
+      if (selected.has(key)) selected.delete(key); else selected.add(key);
+      if (canVibrate) navigator.vibrate(10);
+      renderSelection();
+    });
   });
 
-  async function send(key, btn) {
-    if (!validRoom(roomInput.value)) { setSendStatus('房间号需要 6 位数字', 'err'); return; }
+  sendMultiBtn.addEventListener('click', async () => {
+    const letters = selectedLetters();
+    if (letters && await send(letters, sendMultiBtn)) {
+      selected.clear();
+      renderSelection();
+    }
+  });
+
+  async function send(letters, btn) {
+    if (!validRoom(roomInput.value)) { setSendStatus('房间号需要 6 位数字', 'err'); return false; }
     btn.classList.remove('sent'); void btn.offsetWidth; btn.classList.add('sent');
     if (canVibrate) navigator.vibrate(15);
     const n = nonce();
-    const n1 = COUNTS[key];
-    setSendStatus(`正在发送 ${key}…`);
+    const gap = Math.round(Number(gapInput.value) * 1000);
+    setSendStatus(`正在发送 ${label(letters)}…`);
     try {
-      await publish({ t: 'sig', k: key, n });
+      await publish({ t: 'sig', k: letters, gap, n });
     } catch (e) {
       setSendStatus('发送失败:' + e.message, 'err');
-      return;
+      return false;
     }
-    setSendStatus(`已发送 ${key}(振动 ${n1} 下),等待接收端确认…`);
+    setSendStatus(`已发送 ${describe(letters)},等待接收端确认…`);
     const timer = setTimeout(() => {
       if (!pending.has(n)) return;
       pending.delete(n);
-      setSendStatus(`已发送 ${key},但接收端 6 秒内没有确认。请确认对方房间号是 ${room},并已点「开始接收」。`, 'warn');
-    }, 6000);
-    pending.set(n, { key, timer });
+      setSendStatus(`已发送 ${label(letters)},但接收端 ${ACK_TIMEOUT / 1000} 秒内没有确认。请确认对方房间号是 ${room},并已开始接收。`, 'warn');
+    }, ACK_TIMEOUT);
+    pending.set(n, { letters, timer });
+    return true;
   }
 
   function onSenderMsg(m) {
     if (m.t !== 'ack' || !pending.has(m.n)) return;
-    const { key, timer } = pending.get(m.n);
+    const { letters, timer } = pending.get(m.n);
     clearTimeout(timer);
     pending.delete(m.n);
-    setSendStatus(`✓ 接收端已收到 ${key},振动 ${COUNTS[key]} 下`, 'ok');
+    setSendStatus(`✓ 接收端已收到 ${describe(letters)}`, 'ok');
   }
 
   // ---------- 接收端 ----------
@@ -396,44 +476,64 @@
   }
 
   function onReceiverMsg(m) {
-    if (m.t !== 'sig' || !COUNTS[m.k] || seen.has(m.n)) return;
+    const letters = typeof m.k === 'string' ? m.k.split('').filter((c) => COUNTS[c]).join('') : '';
+    if (m.t !== 'sig' || !letters || seen.has(m.n)) return;
     seen.add(m.n);
-    signal(m.k);
-    publish({ t: 'ack', n: m.n, k: m.k }).catch(() => {});
+    const gap = Math.min(5000, Math.max(300, Number(m.gap) || DEFAULT_GAP));
+    signal(letters, gap);
+    publish({ t: 'ack', n: m.n, k: letters }).catch(() => {});
   }
 
   let signalTimers = [];
-  function signal(key) {
-    const count = COUNTS[key];
+  function signal(letters, gap) {
     signalTimers.forEach(clearTimeout);
     signalTimers = [];
 
+    // 每个脉冲的开始时间:同一字母内隔 PULSE_OFF,字母之间停顿 gap
+    const starts = [];
+    const owners = [];
+    let t = 0;
+    letters.split('').forEach((c, li) => {
+      if (li > 0) t += gap - PULSE_OFF;
+      for (let i = 0; i < COUNTS[c]; i++) {
+        starts.push(t);
+        owners.push(c);
+        t += PULSE_ON + PULSE_OFF;
+      }
+    });
+
     if (canVibrate) {
       const pattern = [];
-      for (let i = 0; i < count; i++) pattern.push(PULSE_ON, PULSE_OFF);
-      pattern.pop();
+      starts.forEach((s, i) => {
+        if (i > 0) pattern.push(s - starts[i - 1] - PULSE_ON);
+        pattern.push(PULSE_ON);
+      });
       navigator.vibrate(pattern);
     }
 
-    display.dataset.key = key;
+    const multi = letters.length > 1;
+    display.dataset.key = letters[0];
     bigLetter.classList.remove('idle');
-    bigLetter.textContent = key;
-    pulses.innerHTML = '<i></i>'.repeat(count);
+    bigLetter.classList.toggle('multi', multi);
+    bigLetter.textContent = letters.split('').join(' ');
+    pulses.classList.toggle('multi', multi);
+    pulses.innerHTML = letters.split('').map((c) => `<span class="grp">${'<i></i>'.repeat(COUNTS[c])}</span>`).join('');
     const dots = pulses.querySelectorAll('i');
 
-    for (let i = 0; i < count; i++) {
+    starts.forEach((s, i) => {
       signalTimers.push(setTimeout(() => {
+        display.dataset.key = owners[i];
         dots[i].classList.add('on');
         display.classList.add('flash');
         if ($('beep').checked) beep(PULSE_ON / 1000, 0.25);
         if (!canVibrate) iosHaptic();
-      }, i * (PULSE_ON + PULSE_OFF)));
-      signalTimers.push(setTimeout(() => display.classList.remove('flash'), i * (PULSE_ON + PULSE_OFF) + PULSE_ON));
-    }
+      }, s));
+      signalTimers.push(setTimeout(() => display.classList.remove('flash'), s + PULSE_ON));
+    });
 
     const li = document.createElement('li');
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    li.innerHTML = `<span><b>${key}</b> · 振动 ${count} 下</span><span>${time}</span>`;
+    li.innerHTML = `<span><b>${label(letters)}</b> · 振动 ${letters.split('').map((c) => COUNTS[c]).join(' + ')} 下</span><span>${time}</span>`;
     historyList.prepend(li);
     while (historyList.children.length > 8) historyList.lastChild.remove();
   }
@@ -456,16 +556,16 @@
   // iOS 18+ Safari:点击 switch 复选框的 label 会触发一次触感反馈(尽力而为,不保证生效)
   function iosHaptic() {
     try {
-      const label = document.createElement('label');
-      label.setAttribute('aria-hidden', 'true');
-      label.style.display = 'none';
+      const el = document.createElement('label');
+      el.setAttribute('aria-hidden', 'true');
+      el.style.display = 'none';
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.setAttribute('switch', '');
-      label.appendChild(input);
-      document.head.appendChild(label);
-      label.click();
-      label.remove();
+      el.appendChild(input);
+      document.head.appendChild(el);
+      el.click();
+      el.remove();
     } catch {}
   }
 
@@ -489,6 +589,7 @@
   if (params.get('room') || params.get('mode')) {
     store.set('room', room);
   }
+  setPick(pick);
   setMode(mode);
 })();
 </script>
