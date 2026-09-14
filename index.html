@@ -69,6 +69,10 @@
   .conn[data-state="connecting"] .dot { background: var(--warn); animation: blink 1s infinite; }
   .conn[data-state="error"] .dot { background: var(--err); animation: blink 1s infinite; }
   @keyframes blink { 50% { opacity: .3; } }
+  .quota { font-size: 13px; color: var(--muted); margin-top: 4px; padding-left: 16px; }
+  .quota b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .quota.low b { color: var(--warn); }
+  .quota.out b { color: var(--err); }
 
   .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 16px 0; background: var(--line); border-radius: 14px; }
   .seg button { border: 0; background: transparent; padding: 10px; border-radius: 10px; font-weight: 600; color: var(--muted); }
@@ -160,6 +164,7 @@
       <button class="ghost" id="share" type="button">分享</button>
     </div>
     <div class="conn" id="conn" data-state="idle"><span class="dot"></span><span id="connText">未连接</span></div>
+    <div class="quota" id="quota" hidden>今日剩余额度 <b id="quotaLeft">–</b> / <span id="quotaLimit">250</span> 条(按当前网络计算)</div>
   </section>
 
   <nav class="seg" role="tablist">
@@ -346,8 +351,26 @@
 
   async function publish(payload) {
     const res = await fetch(NTFY + topic(room), { method: 'POST', body: JSON.stringify(payload) });
-    if (res.status === 429) throw new Error('发送太频繁,请稍等几秒再试');
+    if (res.status === 429) { refreshQuota(); throw new Error('发送太频繁或今日额度已用完'); }
     if (!res.ok) throw new Error('服务器返回 ' + res.status);
+    refreshQuota();
+  }
+
+  // ntfy.sh 免费额度按网络 IP 每天计算;发信号和回执各算 1 条
+  async function refreshQuota() {
+    try {
+      const res = await fetch(NTFY + 'v1/account');
+      if (!res.ok) return;
+      const d = await res.json();
+      const limit = d.limits && d.limits.messages;
+      const left = d.stats && d.stats.messages_remaining;
+      if (typeof limit !== 'number' || typeof left !== 'number') return;
+      $('quotaLeft').textContent = left;
+      $('quotaLimit').textContent = limit;
+      $('quota').classList.toggle('low', left > 0 && left <= 30);
+      $('quota').classList.toggle('out', left <= 0);
+      $('quota').hidden = false;
+    } catch {}
   }
 
   // ---------- 模式切换 ----------
@@ -666,6 +689,7 @@
     if (receiving) { keepAwake(); subscribe(onReceiverMsg); }
     else if (mode === 'send') subscribe(onSenderMsg);
     if (audioCtx) audioCtx.resume().catch(() => {});
+    refreshQuota();
   });
 
   // ---------- 启动 ----------
@@ -674,6 +698,8 @@
   }
   setPick(pick);
   setMode(mode);
+  refreshQuota();
+  setInterval(refreshQuota, 60000);
 })();
 </script>
 </body>
