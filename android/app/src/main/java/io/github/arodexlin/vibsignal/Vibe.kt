@@ -14,9 +14,10 @@ import android.os.VibratorManager
 
 /** 把信号翻译成振动:A=1 下 … D=4 下,字母之间停顿 gap 毫秒;重置为急促连振。 */
 object Vibe {
-    const val PULSE_ON = 300L
     const val PULSE_OFF = 250L
     const val DEFAULT_GAP = 1500L
+    const val DEFAULT_PULSE_MS = 300
+    const val DEFAULT_STRENGTH = 100
     private const val RESET_ON = 100L
     private const val RESET_OFF = 80L
     private const val RESET_PULSES = 8
@@ -28,13 +29,13 @@ object Vibe {
     fun counts(letters: String) = letters.map { count(it) }.joinToString(" + ")
 
     /** createWaveform 的时长数组,依次为 关、开、关、开…… */
-    fun timings(letters: String, gap: Long): LongArray {
+    fun timings(letters: String, gap: Long, pulseOn: Long): LongArray {
         val out = mutableListOf(0L)
         letters.forEachIndexed { index, letter ->
             if (index > 0) out.add(gap)
             repeat(count(letter)) { i ->
                 if (i > 0) out.add(PULSE_OFF)
-                out.add(PULSE_ON)
+                out.add(pulseOn)
             }
         }
         return out.toLongArray()
@@ -49,7 +50,10 @@ object Vibe {
         return out.toLongArray()
     }
 
-    fun play(context: Context, letters: String, gap: Long) = vibrate(context, timings(letters, gap))
+    fun play(context: Context, letters: String, gap: Long) {
+        val pulseOn = settings(context).getInt(Protocol.PREF_PULSE_MS, DEFAULT_PULSE_MS).coerceIn(100, 300)
+        vibrate(context, timings(letters, gap, pulseOn.toLong()))
+    }
 
     /** 新的振动会打断正在进行的振动 */
     fun playReset(context: Context) = vibrate(context, resetTimings())
@@ -67,14 +71,26 @@ object Vibe {
         }
     }
 
-    private fun vibrate(context: Context, timings: LongArray) {
-        val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+    fun vibrator(context: Context): Vibrator =
+        if (Build.VERSION.SDK_INT >= 31) {
             context.getSystemService(VibratorManager::class.java).defaultVibrator
         } else {
             @Suppress("DEPRECATION")
             context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
-        val effect = VibrationEffect.createWaveform(timings, -1)
+
+    private fun settings(context: Context) = context.getSharedPreferences(Protocol.PREFS, Context.MODE_PRIVATE)
+
+    private fun vibrate(context: Context, timings: LongArray) {
+        val vibrator = vibrator(context)
+        val effect = if (vibrator.hasAmplitudeControl()) {
+            // 强度越低,马达振动声越小;timings 下标为奇数的段是"开"
+            val strength = settings(context).getInt(Protocol.PREF_STRENGTH, DEFAULT_STRENGTH).coerceIn(20, 100)
+            val amplitude = (strength * 255 / 100).coerceIn(1, 255)
+            VibrationEffect.createWaveform(timings, IntArray(timings.size) { if (it % 2 == 1) amplitude else 0 }, -1)
+        } else {
+            VibrationEffect.createWaveform(timings, -1)
+        }
         // 用"闹钟"用途振动,尽量避免熄屏、后台或静音时被系统过滤
         if (Build.VERSION.SDK_INT >= 33) {
             vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ALARM))

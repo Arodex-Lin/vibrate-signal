@@ -21,6 +21,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 
 class MainActivity : Activity() {
@@ -90,6 +91,45 @@ class MainActivity : Activity() {
         add(lastText, top = 28)
         lastMeta = textView(14f, muted = true).apply { gravity = Gravity.CENTER }
         add(lastMeta, top = 4)
+
+        // 振动设置:强度需要手机支持振幅调节;每下时长越短,振动声越小
+        fun slider(from: Int, to: Int, value: Int, onChange: (Int) -> Unit) = SeekBar(this).apply {
+            max = to
+            min = from
+            progress = value
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) = onChange(progress)
+                override fun onStartTrackingTouch(bar: SeekBar?) {}
+                // 松手时振一下,直接感受效果
+                override fun onStopTrackingTouch(bar: SeekBar?) = Vibe.play(this@MainActivity, "A", Vibe.DEFAULT_GAP)
+            })
+        }
+
+        val canAdjustStrength = Vibe.vibrator(this).hasAmplitudeControl()
+        val strengthLabel = textView(14f)
+        fun renderStrength(value: Int) {
+            strengthLabel.text = if (canAdjustStrength) "振动强度 $value%" else "振动强度:这台手机不支持调节,可以把每下时长调短"
+        }
+        val strength = prefs.getInt(Protocol.PREF_STRENGTH, Vibe.DEFAULT_STRENGTH)
+        add(strengthLabel, top = 28)
+        add(slider(20, 100, strength) { value ->
+            prefs.edit().putInt(Protocol.PREF_STRENGTH, value).apply()
+            renderStrength(value)
+        }.apply { isEnabled = canAdjustStrength }, top = 4)
+        renderStrength(strength)
+
+        val pulseLabel = textView(14f)
+        fun renderPulse(ms: Int) {
+            pulseLabel.text = "每下时长 $ms 毫秒(越短越安静)"
+        }
+        val pulseMs = prefs.getInt(Protocol.PREF_PULSE_MS, Vibe.DEFAULT_PULSE_MS)
+        add(pulseLabel, top = 12)
+        add(slider(100, 300, pulseMs) { value ->
+            val ms = value / 10 * 10
+            prefs.edit().putInt(Protocol.PREF_PULSE_MS, ms).apply()
+            renderPulse(ms)
+        }, top = 4)
+        renderPulse(pulseMs)
 
         add(Button(this).apply {
             text = "测试振动(A → C)"

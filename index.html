@@ -100,6 +100,7 @@
   .gap-row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); margin-bottom: 12px; }
   .gap-row input { flex: 1; min-width: 0; accent-color: var(--accent); }
   .gap-row b { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .gap-row.setting { margin: 12px 0 0; }
 
   .status { min-height: 3em; margin: 14px 2px 0; font-size: 14px; color: var(--muted); }
   .status.ok { color: var(--ok); }
@@ -200,10 +201,15 @@
         <label class="switch"><input type="checkbox" id="beep" checked> 同时响提示音</label>
         <button class="ghost" id="stopBtn" type="button">停止接收</button>
       </div>
+      <div class="gap-row setting">
+        <label for="pulse">每下振动</label>
+        <input type="range" id="pulse" min="100" max="300" step="10" value="300">
+        <b id="pulseVal">0.30 秒</b>
+      </div>
       <ol class="history" id="history"></ol>
     </div>
     <p class="warnbox" id="vibWarn" hidden>这个浏览器不支持网页振动(iPhone 上的所有浏览器都不支持),收到信号时会改用<b>提示音 + 闪屏</b>来提醒。</p>
-    <p class="hint">网页接收时请保持页面在前台、屏幕常亮;切到后台或锁屏后浏览器收不到信号。</p>
+    <p class="hint">网页接收时请保持页面在前台、屏幕常亮;切到后台或锁屏后浏览器收不到信号。网页没法调振动强度,嫌振动声大可以把「每下振动」调短;安卓 App 还能调强度。</p>
     <a class="applink" href="https://github.com/Arodex-Lin/vibrate-signal/releases/latest/download/vibrate-signal.apk">熄屏也要振动?下载安卓接收 App</a>
   </section>
 </main>
@@ -213,7 +219,7 @@
   const NTFY = 'https://ntfy.sh/';
   const TOPIC_PREFIX = 'vibsig-q7k2-';
   const COUNTS = { A: 1, B: 2, C: 3, D: 4 };
-  const PULSE_ON = 300, PULSE_OFF = 250;
+  const PULSE_OFF = 250; // 每下振动的时长由接收端滑块决定
   const DEFAULT_GAP = 1500;
   const RESET_ON = 100, RESET_OFF = 80, RESET_PULSES = 8; // 重置:急促连振
   const ACK_TIMEOUT = 6000;
@@ -467,6 +473,15 @@
   const historyList = $('history');
   $('vibWarn').hidden = canVibrate;
 
+  const pulseInput = $('pulse');
+  const storedPulse = parseInt(store.get('pulse'), 10);
+  if (storedPulse >= 100 && storedPulse <= 300) pulseInput.value = storedPulse;
+  const pulseOn = () => Number(pulseInput.value);
+  function renderPulse() { $('pulseVal').textContent = (pulseOn() / 1000).toFixed(2) + ' 秒'; }
+  pulseInput.addEventListener('input', () => { renderPulse(); store.set('pulse', pulseInput.value); });
+  pulseInput.addEventListener('change', () => { if (canVibrate) navigator.vibrate(pulseOn()); }); // 松手试振一下
+  renderPulse();
+
   $('startBtn').addEventListener('click', startReceiving);
   $('stopBtn').addEventListener('click', () => { stopReceiving(); resubscribe(); });
 
@@ -515,6 +530,7 @@
   function signal(letters, gap) {
     signalTimers.forEach(clearTimeout);
     signalTimers = [];
+    const on = pulseOn();
 
     // 每个脉冲的开始时间:同一字母内隔 PULSE_OFF,字母之间停顿 gap
     const starts = [];
@@ -525,15 +541,15 @@
       for (let i = 0; i < COUNTS[c]; i++) {
         starts.push(t);
         owners.push(c);
-        t += PULSE_ON + PULSE_OFF;
+        t += on + PULSE_OFF;
       }
     });
 
     if (canVibrate) {
       const pattern = [];
       starts.forEach((s, i) => {
-        if (i > 0) pattern.push(s - starts[i - 1] - PULSE_ON);
-        pattern.push(PULSE_ON);
+        if (i > 0) pattern.push(s - starts[i - 1] - on);
+        pattern.push(on);
       });
       navigator.vibrate(pattern);
     }
@@ -552,10 +568,10 @@
         display.dataset.key = owners[i];
         dots[i].classList.add('on');
         display.classList.add('flash');
-        if ($('beep').checked) beep(PULSE_ON / 1000, 0.25);
+        if ($('beep').checked) beep(on / 1000, 0.25);
         if (!canVibrate) iosHaptic();
       }, s));
-      signalTimers.push(setTimeout(() => display.classList.remove('flash'), s + PULSE_ON));
+      signalTimers.push(setTimeout(() => display.classList.remove('flash'), s + on));
     });
 
     addHistory(`<b>${label(letters)}</b> · 振动 ${letters.split('').map((c) => COUNTS[c]).join(' + ')} 下`);
